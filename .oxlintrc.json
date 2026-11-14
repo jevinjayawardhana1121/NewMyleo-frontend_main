@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-undef": "off",
+    "react/jsx-key": "warn",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn"
+  },
+  "env": {
+    "browser": true,
+    "es2022": true
+  }
+}
+

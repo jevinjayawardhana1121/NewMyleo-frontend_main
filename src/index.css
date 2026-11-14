@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --brand-primary: #4091e2;
+    --brand-primary-light: #60a5fa;
+    --brand-dark: #212529;
+    --brand-canvas: #f3f4f8;
+    --brand-gold: #ffc107;
+    --brand-success: #10b981;
+    --brand-danger: #ef4444;
+  }
+
+  body {
+    background-color: var(--brand-canvas);
+    color: var(--brand-dark);
+    font-family: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  /* Custom sleek scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+}
+
+@layer components {
+  /* Ultra-modern glassmorphic cards */
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-xl border border-white/60 shadow-soft-sm transition-all duration-300;
+  }
+
+  .glass-card-hover {
+    @apply hover:bg-white hover:border-slate-200 hover:shadow-soft-md hover:-translate-y-0.5 transition-all duration-300;
+  }
+
+  .interactive-scale {
+    @apply transition-transform duration-150 active:scale-[0.98] select-none;
+  }
+
+  .gradient-brand-subtle {
+    @apply bg-gradient-to-tr from-brand-600 via-brand-500 to-brand-400;
+  }
+
+  .gradient-gold-subtle {
+    @apply bg-gradient-to-tr from-amber-500 via-gold-500 to-amber-400;
+  }
+
+  .ambient-glow-primary {
+    background: radial-gradient(circle, rgba(64, 145, 226, 0.12) 0%, rgba(243, 244, 248, 0) 70%);
+  }
+
+  .ambient-glow-gold {
+    background: radial-gradient(circle, rgba(255, 193, 7, 0.1) 0%, rgba(243, 244, 248, 0) 70%);
+  }
+}
