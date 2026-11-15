@@ -5,6 +5,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useUserStore } from '@/store/userStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { notify } from '@/lib/api';
+import { districtsApi } from '@/lib/backendService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,8 +79,12 @@ export default function MyDistrict() {
   };
 
   // Preference Toggle: Route via Region Chairperson
-  const handleToggleRCPreference = (checked: boolean) => {
+  const handleToggleRCPreference = async (checked: boolean) => {
     settings.setEnableRegionChairpersonApproval(checked);
+    // Real Laravel backend call: PUT api/districts/:district_id
+    await districtsApi.updateDistrict(targetDistrictId, {
+      is_report_region_chairman_review_required: checked,
+    });
     notify(
       checked
         ? 'Reporting flow updated: Club reports will route to Region Chairpersons (RC) for initial review.'
@@ -109,12 +114,21 @@ export default function MyDistrict() {
   };
 
   // Handle Create Club (District President Permission)
-  const handleCreateClub = (e: React.FormEvent) => {
+  const handleCreateClub = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClubName.trim()) {
       notify('Please enter a valid Club Name', 'warning');
       return;
     }
+
+    // Real Laravel backend call: POST api/districts/:district_id/clubs
+    await districtsApi.createClub(targetDistrictId, {
+      name: newClubName.trim(),
+      club_region: `Region ${newClubRegion}`,
+      club_type: 'Omega',
+      is_active: true,
+      districts_id: Number(targetDistrictId) || 1,
+    });
 
     const created = settings.addClub({
       name: newClubName.trim(),
@@ -135,12 +149,18 @@ export default function MyDistrict() {
   };
 
   // Handle Leader Appointment (District President Permission)
-  const handleAppointLeader = (e: React.FormEvent) => {
+  const handleAppointLeader = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!appointOfficerName.trim()) {
       notify('Please enter officer name', 'warning');
       return;
     }
+
+    // Real Laravel backend call: POST api/districts/:district_id/assign-role
+    await districtsApi.assignRole(targetDistrictId, {
+      user_id: parseInt(appointOfficerLeoId, 10) || 5,
+      role_name: appointRole.replace(/^Leo\s+|Club\s+|District\s+/i, '').trim() || appointRole,
+    });
 
     settings.appointOfficer({
       level: 'District',

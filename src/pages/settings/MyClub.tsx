@@ -4,14 +4,15 @@ import { useParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useUserStore } from '@/store/userStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { getData, notify } from '@/lib/api';
+import { clubsApi } from '@/lib/backendService';
+import { notify } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Building, Users, Calendar, MapPin, Mail, Award, Shield, UserPlus, ShieldCheck } from 'lucide-react';
+import { Building, Users, Calendar, MapPin, Mail, Award, Shield, UserPlus, ShieldCheck, Save, Globe2 } from 'lucide-react';
 
 export default function MyClub() {
   const { id } = useParams<{ id?: string }>();
@@ -20,46 +21,82 @@ export default function MyClub() {
 
   const [activeTab, setActiveTab] = useState<'info' | 'officers' | 'stats'>('info');
   const [clubData, setClubData] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
 
   // Appoint Officer Modal
   const [appointOpen, setAppointOpen] = useState(false);
   const [officerRole, setOfficerRole] = useState('Vice President');
   const [officerName, setOfficerName] = useState('');
-  const [officerLeoId, setOfficerLeoId] = useState('');
+  const [officerUserId, setOfficerUserId] = useState('16');
+
+  // Edit Club Info State
+  const [editClubEmail, setEditClubEmail] = useState('');
+  const [editClubWebsite, setEditClubWebsite] = useState('');
+  const [editAdvisorName, setEditAdvisorName] = useState('');
+  const [editAdvisorEmail, setEditAdvisorEmail] = useState('');
 
   const targetClubId = id || user.clubId || '1';
 
   useEffect(() => {
     if (targetClubId) {
-      getData(`club/${targetClubId}`).then((res) => {
-        if (res) setClubData(res.data || res);
+      clubsApi.getById(targetClubId).then((res) => {
+        if (res && res.data) {
+          setClubData(res.data);
+          setEditClubEmail(res.data.email || 'colombocentral@leomd306.org');
+          setEditClubWebsite(res.data.website || 'https://colombocentral.leomd306.org');
+          setEditAdvisorName(res.data.advisor_name || 'Lion Jane Perera');
+          setEditAdvisorEmail(res.data.advisor_email || 'advisor.central@leomd306.org');
+        }
       });
     }
   }, [targetClubId]);
 
-  const displayClubName = clubData?.name || (id ? 'Club Profile' : user.clubName || 'Colombo Millennium');
+  const displayClubName = clubData?.name || (id ? 'Club Profile' : user.clubName || 'Leo Club of Colombo Central');
 
-  const handleAppointOfficer = (e: React.FormEvent) => {
+  const handleAppointOfficer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!officerName.trim()) {
       notify('Please enter the officer name', 'warning');
       return;
     }
 
+    setLoading(true);
+    // 1. Call Laravel Backend API: POST api/clubs/assign-role
+    const res = await clubsApi.assignRole({
+      user_id: parseInt(officerUserId, 10) || 16,
+      role_name: officerRole,
+    });
+    setLoading(false);
+
+    // 2. Also register in local settingsStore for offline and immediate reactive rendering
     settings.appointOfficer({
       level: 'Club',
       targetEntityId: targetClubId,
       targetEntityName: displayClubName,
       role: officerRole,
       officerName: officerName.trim(),
-      officerLeoId: officerLeoId.trim() || '4892099',
+      officerLeoId: officerUserId.trim() || '16',
       appointedBy: `${user.currentRole} (${user.firstName} ${user.lastName})`,
     });
 
     setAppointOpen(false);
     setOfficerName('');
-    setOfficerLeoId('');
-    notify(`Appointed ${officerName} as ${officerRole} for Leo Club of ${displayClubName}!`, 'success');
+    notify(`Appointed ${officerName} as ${officerRole} for ${displayClubName}!`, 'success');
+  };
+
+  const handleSaveClubInfo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    // Call Laravel Backend API: PUT api/clubs/:club_id
+    await clubsApi.updateClub(targetClubId, {
+      name: displayClubName,
+      email: editClubEmail,
+      website: editClubWebsite,
+      advisor_name: editAdvisorName,
+      advisor_email: editAdvisorEmail,
+    });
+    setLoading(false);
+    notify('Club profile details saved successfully to backend!', 'success');
   };
 
   // Appointments for this club
@@ -67,10 +104,8 @@ export default function MyClub() {
     (a) => a.level === 'Club' && (a.targetEntityId === targetClubId || a.targetEntityName === displayClubName)
   );
 
-  // Allowed appointment roles based on user role
-  const isPresident = user.currentRole === 'Club President';
-  const isSecretary = user.currentRole === 'Club Secretary';
   const canAppoint = user.canAppointClubOfficers;
+  const isSecretary = user.currentRole === 'Club Secretary';
 
   return (
     <AppLayout pageTitle={`Leo Club of ${displayClubName}`} subtitle="Official Club Profile, Council & Leadership">
@@ -87,7 +122,7 @@ export default function MyClub() {
               </div>
               <div className="text-center sm:text-right flex items-center gap-2">
                 <Badge variant="brand" className="text-xs">
-                  Region {clubData?.region || '1'} • {user.districtName || 'District 306 A1'}
+                  Region {clubData?.club_region || '1'} • {user.districtName || 'District 306 A1'}
                 </Badge>
                 {canAppoint && (
                   <Button size="sm" variant="brand" onClick={() => setAppointOpen(true)} className="gap-1.5 shadow-sm text-xs">
@@ -98,7 +133,7 @@ export default function MyClub() {
             </div>
 
             <div>
-              <h1 className="text-2xl font-black text-slate-900">Leo Club of {displayClubName}</h1>
+              <h1 className="text-2xl font-black text-slate-900">{displayClubName}</h1>
               <p className="text-xs text-slate-500 mt-1">
                 Chartered under Lions Clubs International • Multiple District 306 Sri Lanka & Maldives
               </p>
@@ -118,180 +153,218 @@ export default function MyClub() {
         />
 
         {activeTab === 'info' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs">
-            <Card>
-              <CardHeader className="pb-3 border-b border-slate-100">
-                <CardTitle className="text-sm font-bold text-slate-800">Charter & Jurisdiction</CardTitle>
-              </CardHeader>
-              <CardContent className="p-5 space-y-3">
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Club ID</span>
-                  <span className="font-mono font-bold text-slate-800">{targetClubId}</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Leo District</span>
-                  <span className="font-semibold text-slate-800">{user.districtName || 'District 306 A1'}</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Region & Zone</span>
-                  <span className="font-semibold text-slate-800">Region {clubData?.region || '1'} • Zone {clubData?.zone || '1'}</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Charter Date</span>
-                  <span className="font-semibold text-slate-800">{clubData?.charter_date || '2015-06-20'}</span>
-                </div>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2 space-y-6">
+              <Card>
+                <CardHeader className="border-b border-slate-100 pb-4">
+                  <CardTitle className="text-sm font-bold text-slate-900">Club Profile & Contact Information</CardTitle>
+                  <CardDescription className="text-xs">
+                    Official club contact details synchronized with the District and International directory.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <form onSubmit={handleSaveClubInfo} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-700 uppercase">Club Email</label>
+                        <Input
+                          type="email"
+                          value={editClubEmail}
+                          onChange={(e) => setEditClubEmail(e.target.value)}
+                          disabled={!user.canUpdateClubProfile}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-700 uppercase">Website URL</label>
+                        <Input
+                          value={editClubWebsite}
+                          onChange={(e) => setEditClubWebsite(e.target.value)}
+                          disabled={!user.canUpdateClubProfile}
+                        />
+                      </div>
+                    </div>
 
-            <Card>
-              <CardHeader className="pb-3 border-b border-slate-100">
-                <CardTitle className="text-sm font-bold text-slate-800">Sponsoring Lions Club & Advisory</CardTitle>
-              </CardHeader>
-              <CardContent className="p-5 space-y-3">
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Sponsoring Club</span>
-                  <span className="font-semibold text-slate-800">{clubData?.sponsor_lions_club || 'Lions Club of Colombo Millennium'}</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-700 uppercase">Lions Leo Advisor</label>
+                        <Input
+                          value={editAdvisorName}
+                          onChange={(e) => setEditAdvisorName(e.target.value)}
+                          disabled={!user.canUpdateClubProfile}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-700 uppercase">Advisor Email</label>
+                        <Input
+                          type="email"
+                          value={editAdvisorEmail}
+                          onChange={(e) => setEditAdvisorEmail(e.target.value)}
+                          disabled={!user.canUpdateClubProfile}
+                        />
+                      </div>
+                    </div>
+
+                    {user.canUpdateClubProfile && (
+                      <div className="pt-2 flex justify-end">
+                        <Button type="submit" variant="brand" size="sm" disabled={loading} className="gap-2">
+                          <Save className="w-4 h-4" />
+                          {loading ? 'Saving...' : 'Save Profile Changes'}
+                        </Button>
+                      </div>
+                    )}
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="space-y-4">
+              <Card className="p-5 space-y-3">
+                <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider">Parent Jurisdiction</h3>
+                <div className="space-y-2 text-xs text-slate-600">
+                  <div className="flex items-center gap-2">
+                    <Building className="w-4 h-4 text-brand-500" />
+                    <span>{user.districtName || 'District 306 A1'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-brand-500" />
+                    <span>Region {clubData?.club_region || '1'} • Zone 1</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Globe2 className="w-4 h-4 text-brand-500" />
+                    <span>Multiple District 306</span>
+                  </div>
                 </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Leo Advisor</span>
-                  <span className="font-semibold text-slate-800">{clubData?.leo_advisor || 'Lion Sunethra Perera, PMJF'}</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Consultation Channel</span>
-                  <span className="font-semibold text-slate-800">Email & Formal Advisory Meetings</span>
-                </div>
-              </CardContent>
-            </Card>
+              </Card>
+            </div>
           </div>
         )}
 
         {activeTab === 'officers' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                { role: 'President', name: 'Jevin Jayawardhana', mylci: '4892011', level: 'Club Executive' },
-                { role: 'Vice President', name: 'Devin Perera', mylci: '4892012', level: 'Appointed Officer' },
-                { role: 'Secretary', name: 'Kavindi Silva', mylci: '4892015', level: 'Appointed Officer' },
-                { role: 'Treasurer', name: 'Sachin Fernando', mylci: '4892020', level: 'Appointed Officer' },
-              ].map((off) => (
-                <Card key={off.role} className="p-5 text-center space-y-2">
-                  <span className="text-xs font-bold text-brand-600 uppercase tracking-wider">{off.role}</span>
-                  <div className="w-14 h-14 rounded-full bg-slate-100 mx-auto flex items-center justify-center text-lg font-bold">
-                    🦁
-                  </div>
-                  <h4 className="font-bold text-sm text-slate-900">{off.name}</h4>
-                  <p className="text-[11px] text-slate-400">MyLCI: {off.mylci}</p>
-                  <Badge variant="outline" className="text-[10px]">{off.level}</Badge>
-                </Card>
-              ))}
-            </div>
-
-            {/* Recent Officer Appointments Log */}
-            <Card className="border-slate-200/90 shadow-sm">
-              <CardHeader className="border-b border-slate-100 pb-4 flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-base font-bold text-slate-900">
-                    Official Appointment Records
-                  </CardTitle>
-                  <CardDescription className="text-xs text-slate-500">
-                    {isPresident && 'As President, you can appoint Vice President, Secretary, Treasurer, and Leo Advisor.'}
-                    {isSecretary && 'As Secretary, you can appoint Vice President, Treasurer, and Leo Advisor.'}
-                    {!canAppoint && 'Viewing official appointments made by the club executive.'}
-                  </CardDescription>
-                </div>
-                {canAppoint && (
-                  <Button size="sm" variant="brand" onClick={() => setAppointOpen(true)} className="gap-1.5 text-xs">
-                    <UserPlus className="w-3.5 h-3.5" /> Appoint Officer
-                  </Button>
-                )}
+            <Card>
+              <CardHeader className="border-b border-slate-100 pb-4">
+                <CardTitle className="text-sm font-bold text-slate-900">Current Executive Officers</CardTitle>
               </CardHeader>
               <CardContent className="p-6">
-                <div className="divide-y divide-slate-100 text-xs">
-                  {clubAppointments.map((apt) => (
-                    <div key={apt.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                      <div>
-                        <span className="font-bold text-slate-900 mr-2">{apt.officerName}</span>
-                        <Badge variant="outline" className="text-[10px]">{apt.role}</Badge>
-                        <span className="text-slate-400 ml-2">MyLCI: {apt.officerLeoId}</span>
-                      </div>
-                      <div className="text-slate-400 text-[11px]">
-                        Appointed by: <strong className="text-slate-600">{apt.appointedBy}</strong> on {apt.appointedDate}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {(clubData?.officers && clubData.officers.length > 0 ? clubData.officers : [
+                    { name: 'Leo John Doe', role: 'Club President' },
+                    { name: 'Leo Jane Smith', role: 'Club Secretary' },
+                    { name: 'Leo Mark Silva', role: 'Club Treasurer' },
+                  ]).map((off: any, idx: number) => (
+                    <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-1.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-xs">
+                          🦁
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-900 text-xs block">{off.name}</span>
+                          <span className="text-[10px] text-brand-600 font-semibold">{off.club_roles?.[0]?.name || off.role}</span>
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
+
+            {clubAppointments.length > 0 && (
+              <Card>
+                <CardHeader className="border-b border-slate-100 pb-4">
+                  <CardTitle className="text-sm font-bold text-slate-900">Recent Council Appointments</CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="space-y-3">
+                    {clubAppointments.map((app) => (
+                      <div key={app.id} className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 text-xs">
+                        <div>
+                          <span className="font-bold text-slate-900">{app.officerName}</span>
+                          <span className="text-slate-500 ml-2">appointed as <strong>{app.role}</strong></span>
+                        </div>
+                        <span className="text-[11px] text-slate-400">{app.date}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
         {activeTab === 'stats' && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card className="p-5">
-              <span className="text-xs font-bold text-slate-400 uppercase">Total Members</span>
-              <div className="text-2xl font-black text-slate-900 mt-1">{clubData?.activeMembers ?? 28}</div>
+              <span className="text-xs text-slate-400 font-bold uppercase">Total Club Members</span>
+              <div className="text-2xl font-black text-slate-900 mt-1">{clubData?.membership_count || 18}</div>
             </Card>
             <Card className="p-5">
-              <span className="text-xs font-bold text-slate-400 uppercase">Projects Completed</span>
-              <div className="text-2xl font-black text-emerald-600 mt-1">{clubData?.projects_count ?? 12}</div>
+              <span className="text-xs text-slate-400 font-bold uppercase">Executive Officers</span>
+              <div className="text-2xl font-black text-brand-600 mt-1">{clubData?.officers_count || 3}</div>
             </Card>
             <Card className="p-5">
-              <span className="text-xs font-bold text-slate-400 uppercase">Activity Reports Submitted</span>
-              <div className="text-2xl font-black text-brand-600 mt-1">{clubData?.reports_count ?? 8}</div>
+              <span className="text-xs text-slate-400 font-bold uppercase">Status</span>
+              <div className="text-2xl font-black text-emerald-600 mt-1">Active</div>
             </Card>
           </div>
         )}
+
+        {/* Modal: Appoint Club Officer */}
+        <Dialog open={appointOpen} onOpenChange={setAppointOpen}>
+          <DialogHeader>
+            <DialogTitle>Appoint Club Officer</DialogTitle>
+            <DialogDescription>
+              Assign an executive officer role for Leo Club of {displayClubName}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAppointOfficer} className="space-y-4 py-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase">Select Role</label>
+              <select
+                value={officerRole}
+                onChange={(e) => setOfficerRole(e.target.value)}
+                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-xs font-medium focus:ring-2 focus:ring-brand-400"
+              >
+                {!isSecretary && <option value="President">President</option>}
+                <option value="Vice President">Vice President</option>
+                <option value="Secretary">Secretary</option>
+                <option value="Treasurer">Treasurer</option>
+                <option value="Leo Advisor">Leo Advisor</option>
+                <option value="Director">Director</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase">Officer Name *</label>
+              <Input
+                value={officerName}
+                onChange={(e) => setOfficerName(e.target.value)}
+                placeholder="e.g. Kasun Perera"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase">User / Member ID *</label>
+              <Input
+                value={officerUserId}
+                onChange={(e) => setOfficerUserId(e.target.value)}
+                placeholder="e.g. 16"
+                required
+              />
+            </div>
+
+            <DialogFooter className="pt-4">
+              <Button type="button" variant="outline" onClick={() => setAppointOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="brand" disabled={loading}>
+                {loading ? 'Assigning...' : 'Confirm Appointment'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Dialog>
       </div>
-
-      {/* APPOINT CLUB OFFICER MODAL */}
-      <Dialog open={appointOpen} onOpenChange={setAppointOpen}>
-        <DialogHeader>
-          <DialogTitle>Appoint Leo Club Officer</DialogTitle>
-          <DialogDescription>
-            {isPresident && 'As Club President, appoint your Vice President, Secretary, Treasurer, or Leo Advisor.'}
-            {isSecretary && 'As Club Secretary, appoint the Vice President, Treasurer, or Leo Advisor.'}
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleAppointOfficer} className="space-y-3 py-2 text-xs">
-          <div className="space-y-1">
-            <label className="font-bold text-slate-700 uppercase">Select Role</label>
-            <select
-              value={officerRole}
-              onChange={(e) => setOfficerRole(e.target.value)}
-              className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-xs font-semibold"
-            >
-              <option value="Vice President">Club Vice President</option>
-              {isPresident && <option value="Club Secretary">Club Secretary</option>}
-              <option value="Club Treasurer">Club Treasurer</option>
-              <option value="Leo Advisor">Leo Advisor</option>
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <label className="font-bold text-slate-700 uppercase">Appointee Full Name</label>
-            <Input
-              placeholder="e.g. Leo Devin Perera"
-              value={officerName}
-              onChange={(e) => setOfficerName(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="font-bold text-slate-700 uppercase">Leo ID / MyLCI Number</label>
-            <Input
-              placeholder="e.g. 4892012"
-              value={officerLeoId}
-              onChange={(e) => setOfficerLeoId(e.target.value)}
-            />
-          </div>
-
-          <DialogFooter className="pt-3">
-            <Button variant="outline" type="button" onClick={() => setAppointOpen(false)}>Cancel</Button>
-            <Button variant="brand" type="submit">Confirm Appointment</Button>
-          </DialogFooter>
-        </form>
-      </Dialog>
     </AppLayout>
   );
 }

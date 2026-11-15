@@ -5,6 +5,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useUserStore } from '@/store/userStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { notify } from '@/lib/api';
+import { multipleDistrictApi } from '@/lib/backendService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,16 +44,28 @@ export default function MyMD() {
   const [appointTargetDistrict, setAppointTargetDistrict] = useState('District 306 A1');
 
   // Handle Create District (MDP Permission)
-  const handleCreateDistrict = (e: React.FormEvent) => {
+  const handleCreateDistrict = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDistrictId.trim()) {
       notify('Please enter a district identifier (e.g. 306 D1)', 'warning');
       return;
     }
 
+    const cleanId = newDistrictId.trim();
+    const sortOrder = parseInt(cleanId.replace(/\D/g, ''), 10) || 7;
+
+    // Real Laravel backend call: POST api/districts
+    await multipleDistrictApi.createDistrict({
+      name: `District ${cleanId}`,
+      sort_order: sortOrder,
+      email: `d${cleanId.replace(/\s+/g, '').toLowerCase()}@leomd306.org`,
+      website: `https://${cleanId.replace(/\s+/g, '').toLowerCase()}.leomd306.org`,
+      dcl_name: newDistrictPresident.trim() || 'Charter District Chairperson',
+    });
+
     const created = settings.addDistrict({
-      id: newDistrictId.trim(),
-      name: `District ${newDistrictId.trim()}`,
+      id: cleanId,
+      name: `District ${cleanId}`,
       geographicArea: newDistrictArea.trim() || 'Territorial Jurisdiction',
       districtPresidentName: newDistrictPresident.trim() || 'Charter District President',
     });
@@ -65,12 +78,18 @@ export default function MyMD() {
   };
 
   // Handle Appoint MD Officer (MDP Permission)
-  const handleAppointMDOfficer = (e: React.FormEvent) => {
+  const handleAppointMDOfficer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!appointOfficerName.trim()) {
       notify('Please enter officer name', 'warning');
       return;
     }
+
+    // Real Laravel backend call: POST api/multiple-district/assign-role
+    await multipleDistrictApi.assignRole({
+      user_id: parseInt(appointOfficerLeoId, 10) || 4,
+      role_name: appointRole.replace(/^Leo\s+|Club\s+|District\s+|Multiple\s+/i, '').trim() || appointRole,
+    });
 
     settings.appointOfficer({
       level: 'Multiple',

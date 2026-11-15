@@ -42,42 +42,47 @@ function updateLoading(delta: number) {
   }
 }
 
-async function getErrorMessage(response: Response): Promise<string> {
+/**
+ * Normalizes API path so leading slashes or duplicate 'api/' are cleanly handled
+ */
+export function getFullUrl(suffix: string): string {
+  const base = apiEndpoint.endsWith('/') ? apiEndpoint : `${apiEndpoint}/`;
+  const cleanSuffix = suffix.replace(/^\/?(api\/)?/, '');
+  return `${base}${cleanSuffix}`;
+}
+
+/**
+ * Parses Laravel Sanctum error structures:
+ * - 422: { message, errors: { field: ["error"] } }
+ * - 401 / 403: { message: "..." }
+ * - 404: { message: "Resource not found." }
+ */
+export async function getErrorMessage(response: Response): Promise<string> {
   try {
-    if (response.status === 403) {
-      const data = await response.json();
-      for (const [, value] of Object.entries(data)) {
-        if (Array.isArray(value) && value[0]) {
-          return String(value[0]);
-        }
-      }
-    } else if (response.status === 422) {
-      const data = await response.json();
-      if (data.errorType === 'UserNotEligibleToDesignationException') {
-        return 'User is not eligible for the designation';
-      }
-      if (data.errors) {
-        const first = Object.values(data.errors)[0];
-        if (Array.isArray(first)) return first[0];
-      }
-    } else if (response.status === 413) {
-      return 'Content cannot be accepted (file size too large)';
-    } else if (response.status === 401) {
-      const data = await response.json();
-      if (data.errorType === 'InvalidCredentialsException') {
-        return 'Invalid credentials';
-      }
-      if (data.errorType === 'InsecurePasswordException') {
-        return 'Password must contain at least one uppercase character, one lowercase character, one numeric character and one special character (minimum 7 characters).';
-      }
+    const data = await response.json();
+    if (data.errors && typeof data.errors === 'object') {
+      const firstKey = Object.keys(data.errors)[0];
+      const val = data.errors[firstKey];
+      if (Array.isArray(val) && val.length > 0) return String(val[0]);
+      if (typeof val === 'string') return val;
+    }
+    if (data.message && typeof data.message === 'string') {
+      return data.message;
+    }
+    if (data.error && typeof data.error === 'string') {
+      return data.error;
     }
   } catch {
     // fallback
   }
-  return 'Something went wrong';
+  if (response.status === 401) return 'Invalid credentials or unauthenticated session.';
+  if (response.status === 403) return 'You are not authorized to perform this action.';
+  if (response.status === 404) return 'The requested resource was not found.';
+  if (response.status === 413) return 'Content cannot be accepted (file size too large).';
+  return 'Something went wrong. Please check your connection or try again.';
 }
 
-async function handleResponse<T>(
+export async function handleResponse<T>(
   response: Response,
   successMsg?: string | null,
   fallbackErrorMsg: string = 'Something went wrong'
@@ -97,6 +102,76 @@ async function handleResponse<T>(
   }
 }
 
+/**
+ * Health check state & probe
+ */
+export interface BackendHealth {
+  connected: boolean;
+  app?: string;
+  environment?: string;
+  status?: string;
+  timestamp?: string;
+  checkedAt: number;
+}
+
+let healthCache: BackendHealth = {
+  connected: false,
+  checkedAt: 0,
+};
+
+type HealthListener = (health: BackendHealth) => void;
+const healthListeners = new Set<HealthListener>();
+
+export function subscribeBackendHealth(cb: HealthListener) {
+  healthListeners.add(cb);
+  cb(healthCache);
+  return () => {
+    healthListeners.delete(cb);
+  };
+}
+
+export async function checkBackendHealth(): Promise<BackendHealth> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(getFullUrl('api/health'), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const data = await res.json();
+      healthCache = {
+        connected: true,
+        app: data.app || 'my-leo-api',
+        environment: data.environment || 'local',
+        status: data.status || 'healthy',
+        timestamp: data.timestamp,
+        checkedAt: Date.now(),
+      };
+      healthListeners.forEach((fn) => fn(healthCache));
+      return healthCache;
+    }
+  } catch {
+    // offline
+  }
+
+  healthCache = {
+    connected: false,
+    checkedAt: Date.now(),
+  };
+  healthListeners.forEach((fn) => fn(healthCache));
+  return healthCache;
+}
+
+export function getCachedBackendHealth(): BackendHealth {
+  return healthCache;
+}
+
 export async function postData<T = any>(
   apiSuffix: string,
   formData?: FormData | Record<string, any>,
@@ -108,14 +183,17 @@ export async function postData<T = any>(
     const token = getCookie('accessToken');
     const isFormData = formData instanceof FormData;
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
       'X-Requested-With': 'XMLHttpRequest',
     };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
     if (!isFormData && formData) {
       headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(apiEndpoint + apiSuffix, {
+    const response = await fetch(getFullUrl(apiSuffix), {
       method: 'POST',
       body: isFormData ? formData : JSON.stringify(formData),
       headers,
@@ -141,14 +219,17 @@ export async function putData<T = any>(
     const token = getCookie('accessToken');
     const isFormData = formData instanceof FormData;
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
       'X-Requested-With': 'XMLHttpRequest',
     };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
     if (!isFormData && formData) {
       headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(apiEndpoint + apiSuffix, {
+    const response = await fetch(getFullUrl(apiSuffix), {
       method: 'PUT',
       body: isFormData ? formData : JSON.stringify(formData),
       headers,
@@ -173,14 +254,17 @@ export async function deleteData<T = any>(
     const token = getCookie('accessToken');
     const isFormData = formData instanceof FormData;
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
       'X-Requested-With': 'XMLHttpRequest',
     };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
     if (!isFormData && formData) {
       headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(apiEndpoint + apiSuffix, {
+    const response = await fetch(getFullUrl(apiSuffix), {
       method: 'DELETE',
       body: isFormData ? formData : formData ? JSON.stringify(formData) : undefined,
       headers,
@@ -203,12 +287,17 @@ export async function getData<T = any>(
   if (!hiddenMode) updateLoading(1);
   try {
     const token = getCookie('accessToken');
-    const response = await fetch(apiEndpoint + apiSuffix, {
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetch(getFullUrl(apiSuffix), {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Requested-With': 'XMLHttpRequest',
-      },
+      headers,
     });
     return await handleResponse<T>(response, successMsg, errorMsg);
   } catch {
@@ -220,4 +309,3 @@ export async function getData<T = any>(
     if (!hiddenMode) updateLoading(-1);
   }
 }
-

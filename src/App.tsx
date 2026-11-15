@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useUserStore } from '@/store/userStore';
 
@@ -64,6 +65,10 @@ function PublicRoute({ children }: { children: JSX.Element }) {
 }
 
 export default function App() {
+  useEffect(() => {
+    useUserStore.getState().initFromCookies();
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>

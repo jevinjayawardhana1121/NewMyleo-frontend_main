@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store/appStore';
 import { useUserStore, UserRole } from '@/store/userStore';
-import { notify } from '@/lib/api';
+import { notify, subscribeBackendHealth, checkBackendHealth, BackendHealth } from '@/lib/api';
 import {
   Menu,
   Search,
@@ -26,6 +26,13 @@ export function Navbar({ pageTitle, subtitle, actions }: NavbarProps) {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [roleModalOpen, setRoleModalOpen] = useState(false);
+  const [health, setHealth] = useState<BackendHealth>({ connected: false, checkedAt: 0 });
+
+  useEffect(() => {
+    checkBackendHealth();
+    const unsub = subscribeBackendHealth(setHealth);
+    return unsub;
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,6 +161,25 @@ export function Navbar({ pageTitle, subtitle, actions }: NavbarProps) {
         {/* Right: Actions, Role Selector & User pill */}
         <div className="flex items-center gap-2.5">
           {actions}
+
+          {/* Backend Connection Status Badge */}
+          {health.connected ? (
+            <div
+              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold shadow-soft-xs"
+              title="Connected to Laravel Backend API (http://localhost:8000)"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              API Connected
+            </div>
+          ) : (
+            <div
+              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-500 text-[10px] font-bold shadow-soft-xs"
+              title="Backend offline (port 8000). Running in Standalone / Demo mode"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              Demo Mode
+            </div>
+          )}
 
           {/* Interactive Role Switcher Pill */}
           <button

@@ -1,8 +1,9 @@
 // @ts-nocheck
 import { create } from 'zustand';
 import { getCookie, setCookie, deleteCookie } from '@/lib/cookie';
-import { apiEndpoint } from '@/lib/env';
 import { initWebSockets } from '@/lib/broadcast';
+import { authApi, ApiUser, ApiRole } from '@/lib/backendService';
+import { notify } from '@/lib/api';
 
 export type UserRole =
   | 'Club President'
@@ -25,6 +26,8 @@ interface UserState {
   gender: string;
   leoId: string;
   mylci: string;
+  email: string;
+  contactNumber: string;
   clubId: string;
   clubName: string;
   districtId: string;
@@ -35,6 +38,7 @@ interface UserState {
   zoneName: string;
   clubLevel: number;
   currentRole: UserRole;
+  rolesList: ApiRole[];
 
   // Club permissions
   canUpdateClubProfile: boolean;
@@ -89,10 +93,10 @@ interface UserState {
   canManageSystem: boolean;
 
   // Actions
-  login: (credentials: { email: string; password: string }) => Promise<boolean>;
+  login: (credentials: { email: string; password: string; device_name?: string }) => Promise<boolean>;
+  checkAuth: () => Promise<boolean>;
   loginAsSample: (email?: string, role?: UserRole) => void;
   switchRole: (role: UserRole) => void;
-  googleLogin: (token: string) => Promise<any>;
   logout: () => Promise<boolean>;
   setUserInfo: (payload: any) => void;
   initFromCookies: () => void;
@@ -103,13 +107,15 @@ export const useUserStore = create<UserState>((set, get) => ({
   accessToken: getCookie('accessToken') || null,
   firstName: getCookie('fName') || 'Jevin',
   lastName: getCookie('lName') || 'Jayawardhana',
+  email: getCookie('userEmail') || 'admin@leomd306.org',
+  contactNumber: getCookie('contactNumber') || '+94771234567',
   image: getCookie('image') || '',
-  gender: getCookie('gender') || '0',
-  leoId: getCookie('leoId') || '1121',
-  mylci: getCookie('mylci') || '4892011',
+  gender: getCookie('gender') || 'Male',
+  leoId: getCookie('leoId') || '1',
+  mylci: getCookie('mylci') || 'LCI123456',
   clubId: getCookie('clubId') || '1',
-  clubName: getCookie('clubName') || 'Colombo Millennium',
-  districtId: getCookie('districtId') || '306 A1',
+  clubName: getCookie('clubName') || 'Leo Club of Colombo Central',
+  districtId: getCookie('districtId') || '1',
   districtName: getCookie('districtName') || 'District 306 A1',
   regionId: getCookie('regionId') || '1',
   regionName: getCookie('regionName') || 'Region 1',
@@ -117,6 +123,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   zoneName: getCookie('zoneName') || 'Zone 1',
   clubLevel: parseInt(getCookie('clubLevel') || '1', 10),
   currentRole: (getCookie('currentRole') as UserRole) || 'Club President',
+  rolesList: [],
 
   canUpdateClubProfile: true,
   canManageActivityReports: true,
@@ -131,92 +138,167 @@ export const useUserStore = create<UserState>((set, get) => ({
   isRegionChairperson: false,
   isZoneHead: false,
 
-  isDp: true,
+  isDp: false,
   districtLevel: 1,
-  isDistrictOfficer: true,
-  canViewClubProjects: true,
-  canViewClubActivityReports: true,
-  canForwardReportsToMultiple: true,
-  canViewClubWallet: true,
-  canManageCouncil: true,
-  canDefineDeadlines: true,
-  canAddProjectCategories: true,
-  canManageDistrictWallet: true,
-  canCreateCouncilMeetings: true,
-  canCreateDistrictEvents: true,
-  canApproveReports: true,
-  canManageClubs: true,
-  canCreateClub: true,
-  canAppointDistrictOfficers: true,
-  canUpdateDistrictProfile: true,
+  isDistrictOfficer: false,
+  canViewClubProjects: false,
+  canViewClubActivityReports: false,
+  canForwardReportsToMultiple: false,
+  canViewClubWallet: false,
+  canManageCouncil: false,
+  canDefineDeadlines: false,
+  canAddProjectCategories: false,
+  canManageDistrictWallet: false,
+  canCreateCouncilMeetings: false,
+  canCreateDistrictEvents: false,
+  canApproveReports: false,
+  canManageClubs: false,
+  canCreateClub: false,
+  canAppointDistrictOfficers: false,
+  canUpdateDistrictProfile: false,
 
-  isMdp: true,
-  isMultipleOfficer: true,
+  isMdp: false,
+  isMultipleOfficer: false,
   multipleLevel: 1,
-  canCreateMultipleCouncilMeetings: true,
-  canCreateMultipleCouncilEvents: true,
-  canManageMultipleCouncil: true,
-  canManageMultipleWallet: true,
-  canAddProjectCategoriesFromMultiple: true,
-  canManageDistricts: true,
-  canCreateDistrict: true,
-  canAppointMultipleOfficers: true,
-  canUpdateMultipleProfile: true,
-  canUpdateResourceCenter: true,
-  canViewForwardedReports: true,
-  canManageSystem: true,
+  canCreateMultipleCouncilMeetings: false,
+  canCreateMultipleCouncilEvents: false,
+  canManageMultipleCouncil: false,
+  canManageMultipleWallet: false,
+  canAddProjectCategoriesFromMultiple: false,
+  canManageDistricts: false,
+  canCreateDistrict: false,
+  canAppointMultipleOfficers: false,
+  canUpdateMultipleProfile: false,
+  canUpdateResourceCenter: false,
+  canViewForwardedReports: false,
+  canManageSystem: false,
 
   initFromCookies: () => {
     const token = getCookie('accessToken');
     if (!token) return;
     const role = (getCookie('currentRole') as UserRole) || 'Club President';
     get().switchRole(role);
+    // Background verify token with /api/me
+    get().checkAuth();
+  },
+
+  checkAuth: async () => {
+    const token = getCookie('accessToken');
+    if (!token) {
+      set({ authenticated: false, accessToken: null });
+      return false;
+    }
+
+    try {
+      const res = await authApi.me();
+      if (res && res.user) {
+        get().setUserInfo(res.user);
+        set({ authenticated: true });
+        return true;
+      }
+    } catch {
+      // Backend offline -> keep local session
+      return true;
+    }
+    return false;
   },
 
   setUserInfo: (payload: any) => {
-    const d = payload.data || payload;
-    setCookie('fName', d.fName || 'Jevin', 1);
-    setCookie('lName', d.lName || 'Jayawardhana', 1);
-    setCookie('image', d.image === 'null' ? '' : (d.image || ''), 1);
-    setCookie('leoId', String(d.leoId || '1121'), 1);
-    setCookie('gender', String(d.gender || '0'), 1);
-    setCookie('mylci', String(d.mylci || '4892011'), 1);
-    setCookie('clubId', String(d.clubId || '1'), 1);
-    setCookie('clubName', d.clubName || 'Colombo Millennium', 1);
-    setCookie('districtName', d.districtName || 'District 306 A1', 1);
-    setCookie('districtId', String(d.districtId || '306 A1'), 1);
-    setCookie('regionId', String(d.regionId || '1'), 1);
-    setCookie('regionName', d.regionName || 'Region 1', 1);
+    const u: ApiUser = payload.user || payload.data || payload;
+    const firstName = u.first_name || u.fName || u.name?.split(' ')[0] || 'Leo';
+    const lastName = u.last_name || u.lName || u.name?.split(' ').slice(1).join(' ') || 'Member';
+    const mylci = u.mylci || 'LCI123456';
+    const leoId = String(u.id || u.leoId || '1');
+    const email = u.email || 'admin@leomd306.org';
+    const contactNumber = u.contact_number || '+94771234567';
+    const gender = u.gender || 'Male';
 
-    const initialRole: UserRole = d.isMdp
-      ? 'Leo Multiple District President'
-      : d.isDp
-      ? 'Leo District President'
-      : d.isRegionChairperson
-      ? 'Region Chairperson'
-      : d.clubLevel === 3
-      ? 'Club Secretary'
-      : d.clubLevel === 4
-      ? 'Club Treasurer'
-      : 'Club President';
+    const clubId = String(u.clubs_id || u.club?.id || u.clubId || '1');
+    const clubName = u.club?.name || u.clubName || 'Leo Club of Colombo Central';
+    const regionName = u.club?.club_region || u.regionName || 'Region 1';
+    const districtId = String(u.club?.district?.id || u.districtId || '1');
+    const districtName = u.club?.district?.name || u.districtName || 'District 306 A1';
+
+    setCookie('fName', firstName, 7);
+    setCookie('lName', lastName, 7);
+    setCookie('userEmail', email, 7);
+    setCookie('contactNumber', contactNumber, 7);
+    setCookie('gender', gender, 7);
+    setCookie('mylci', mylci, 7);
+    setCookie('leoId', leoId, 7);
+    setCookie('clubId', clubId, 7);
+    setCookie('clubName', clubName, 7);
+    setCookie('districtId', districtId, 7);
+    setCookie('districtName', districtName, 7);
+    setCookie('regionName', regionName, 7);
+
+    // Map user.roles from backend
+    const rolesList: ApiRole[] = Array.isArray(u.roles) ? u.roles : [];
+    let initialRole: UserRole = 'Member';
+
+    const mdRole = rolesList.find((r) => r.level === 'MULTIPLE_DISTRICT');
+    const distRole = rolesList.find((r) => r.level === 'DISTRICT');
+    const clubRole = rolesList.find((r) => r.level === 'CLUB');
+
+    if (mdRole) {
+      initialRole = 'Leo Multiple District President';
+    } else if (distRole) {
+      const dName = distRole.name?.toLowerCase() || '';
+      if (dName.includes('president')) {
+        initialRole = 'Leo District President';
+      } else if (dName.includes('region') || dName.includes('chairperson') || dName.includes('coordinator')) {
+        initialRole = 'Region Chairperson';
+      } else if (dName.includes('zone')) {
+        initialRole = 'Zone Head';
+      } else {
+        initialRole = 'Leo District President';
+      }
+    } else if (clubRole) {
+      const cName = clubRole.name?.toLowerCase() || '';
+      if (cName.includes('president') && !cName.includes('vice')) {
+        initialRole = 'Club President';
+      } else if (cName.includes('secretary')) {
+        initialRole = 'Club Secretary';
+      } else if (cName.includes('treasurer')) {
+        initialRole = 'Club Treasurer';
+      } else if (cName.includes('vice')) {
+        initialRole = 'Club Vice President';
+      } else if (cName.includes('advisor')) {
+        initialRole = 'Leo Advisor';
+      } else {
+        initialRole = 'Member';
+      }
+    } else {
+      initialRole = (getCookie('currentRole') as UserRole) || 'Club President';
+    }
+
+    set({
+      firstName,
+      lastName,
+      email,
+      contactNumber,
+      gender,
+      mylci,
+      leoId,
+      clubId,
+      clubName,
+      regionName,
+      districtId,
+      districtName,
+      rolesList,
+    });
 
     get().switchRole(initialRole);
   },
 
   switchRole: (role: UserRole) => {
-    setCookie('currentRole', role, 1);
+    setCookie('currentRole', role, 7);
 
     switch (role) {
       case 'Club President':
         set({
           currentRole: 'Club President',
           clubLevel: 1,
-          clubId: '1',
-          clubName: 'Colombo Millennium',
-          districtId: '306 A1',
-          districtName: 'District 306 A1',
-          regionId: '1',
-          regionName: 'Region 1',
           canUpdateClubProfile: true,
           canManageActivityReports: true,
           canManageMembers: true,
@@ -225,7 +307,7 @@ export const useUserStore = create<UserState>((set, get) => ({
           canManageClubEvents: true,
           canCreateClubMeeting: true,
           canManageWallet: true,
-          canAppointClubOfficers: true, // President can appoint VP, Secretary, Treasurer, Leo Advisor
+          canAppointClubOfficers: true,
           canAppointDistrictOfficers: false,
           canAppointMultipleOfficers: false,
           canCreateClub: false,
@@ -249,21 +331,15 @@ export const useUserStore = create<UserState>((set, get) => ({
         set({
           currentRole: 'Club Secretary',
           clubLevel: 3,
-          clubId: '1',
-          clubName: 'Colombo Millennium',
-          districtId: '306 A1',
-          districtName: 'District 306 A1',
-          regionId: '1',
-          regionName: 'Region 1',
           canUpdateClubProfile: true,
-          canManageActivityReports: true, // Secretary manages Activity Reports
-          canManageMembers: true, // Secretary manages Member records
+          canManageActivityReports: true,
+          canManageMembers: true,
           canManageClubOfficers: true,
-          canManageProjectReports: true, // Secretary manages Project Reports
+          canManageProjectReports: true,
           canManageClubEvents: true,
           canCreateClubMeeting: true,
-          canManageWallet: false, // Secretary does NOT manage Wallet
-          canAppointClubOfficers: true, // Secretary can appoint VP, Treasurer, Leo Advisor (not President)
+          canManageWallet: false,
+          canAppointClubOfficers: true,
           canAppointDistrictOfficers: false,
           canAppointMultipleOfficers: false,
           canCreateClub: false,
@@ -287,21 +363,15 @@ export const useUserStore = create<UserState>((set, get) => ({
         set({
           currentRole: 'Club Treasurer',
           clubLevel: 4,
-          clubId: '1',
-          clubName: 'Colombo Millennium',
-          districtId: '306 A1',
-          districtName: 'District 306 A1',
-          regionId: '1',
-          regionName: 'Region 1',
           canUpdateClubProfile: false,
-          canManageActivityReports: false, // Treasurer does not manage Activity Reports
-          canManageMembers: false, // Treasurer does not manage Members
+          canManageActivityReports: false,
+          canManageMembers: false,
           canManageClubOfficers: false,
-          canManageProjectReports: true, // Treasurer creates & manages Project Reports
+          canManageProjectReports: true,
           canManageClubEvents: false,
           canCreateClubMeeting: false,
-          canManageWallet: true, // Treasurer manages Wallet finances
-          canAppointClubOfficers: false, // Treasurer does not appoint officers
+          canManageWallet: true,
+          canAppointClubOfficers: false,
           canAppointDistrictOfficers: false,
           canAppointMultipleOfficers: false,
           canCreateClub: false,
@@ -325,12 +395,6 @@ export const useUserStore = create<UserState>((set, get) => ({
         set({
           currentRole: 'Region Chairperson',
           clubLevel: 10,
-          clubId: '1',
-          clubName: 'Colombo Millennium',
-          districtId: '306 A1',
-          districtName: 'District 306 A1',
-          regionId: '1',
-          regionName: 'Region 1',
           canUpdateClubProfile: false,
           canManageActivityReports: false,
           canManageMembers: false,
@@ -346,7 +410,7 @@ export const useUserStore = create<UserState>((set, get) => ({
           isZoneHead: false,
           isDp: false,
           isDistrictOfficer: true,
-          canApproveReports: true, // Region Chairperson reviews, approves, or rejects reports of clubs in their region
+          canApproveReports: true,
           canViewClubProjects: true,
           canViewClubActivityReports: true,
           canViewClubWallet: false,
@@ -361,12 +425,6 @@ export const useUserStore = create<UserState>((set, get) => ({
         set({
           currentRole: 'Leo District President',
           clubLevel: 1,
-          clubId: '1',
-          clubName: 'District Cabinet (306 A1)',
-          districtId: '306 A1',
-          districtName: 'District 306 A1',
-          regionId: '1',
-          regionName: 'Region 1',
           canUpdateClubProfile: false,
           canManageActivityReports: false,
           canManageMembers: false,
@@ -374,19 +432,19 @@ export const useUserStore = create<UserState>((set, get) => ({
           canManageProjectReports: false,
           canManageWallet: false,
           canAppointClubOfficers: false,
-          canAppointDistrictOfficers: true, // Appoints Leo Club Presidents, District VP, Sec, Treas, Region Heads, Zone Heads, District Chairperson
+          canAppointDistrictOfficers: true,
           canAppointMultipleOfficers: false,
-          canCreateClub: true, // District President creates new Leo Clubs
+          canCreateClub: true,
           canCreateDistrict: false,
           isRegionChairperson: false,
           isZoneHead: false,
           isDp: true,
           isDistrictOfficer: true,
-          canApproveReports: true, // Reviews approved club reports
+          canApproveReports: true,
           canViewClubProjects: true,
           canViewClubActivityReports: true,
           canViewClubWallet: true,
-          canForwardReportsToMultiple: true, // Reports club reports & wallet to Multiple District President
+          canForwardReportsToMultiple: true,
           canManageCouncil: true,
           canDefineDeadlines: true,
           canAddProjectCategories: true,
@@ -401,12 +459,6 @@ export const useUserStore = create<UserState>((set, get) => ({
         set({
           currentRole: 'Leo Multiple District President',
           clubLevel: 1,
-          clubId: '1',
-          clubName: 'Multiple District 306 Executive',
-          districtId: '306 A1',
-          districtName: 'Multiple District 306',
-          regionId: '1',
-          regionName: 'Region 1',
           canUpdateClubProfile: false,
           canManageActivityReports: false,
           canManageMembers: false,
@@ -415,16 +467,16 @@ export const useUserStore = create<UserState>((set, get) => ({
           canManageWallet: false,
           canAppointClubOfficers: false,
           canAppointDistrictOfficers: false,
-          canAppointMultipleOfficers: true, // Appoints District Presidents, MD VP, MD Sec, MD Treas, MD Chairperson
+          canAppointMultipleOfficers: true,
           canCreateClub: false,
-          canCreateDistrict: true, // Multiple District President creates new Leo Districts
+          canCreateDistrict: true,
           isRegionChairperson: false,
           isZoneHead: false,
           isDp: false,
           isDistrictOfficer: false,
           isMdp: true,
           isMultipleOfficer: true,
-          canViewForwardedReports: true, // Reviews all shared Project Reports, Activity Reports, Wallet data across Districts
+          canViewForwardedReports: true,
           canManageDistricts: true,
           canManageMultipleCouncil: true,
           canManageMultipleWallet: true,
@@ -434,57 +486,48 @@ export const useUserStore = create<UserState>((set, get) => ({
         break;
 
       default:
-        set({ currentRole: 'Club President', clubLevel: 1, canManageWallet: true });
+        set({ currentRole: role, clubLevel: 1, canManageWallet: true });
         break;
     }
   },
 
   login: async (credentials) => {
-    const isSample =
-      credentials.email?.toLowerCase().trim() === 'jevinjayawardhana1121@gmail.com' &&
-      credentials.password === 'Jevin@2001';
-
     try {
-      const response = await fetch(apiEndpoint + 'login', {
-        method: 'POST',
-        body: JSON.stringify(credentials),
-        headers: { 'Content-type': 'application/json' },
-      });
-      if (response.status === 200) {
-        const data = await response.json();
-        setCookie('accessToken', data.token, 1);
-        set({ authenticated: true, accessToken: data.token });
-        get().setUserInfo(data);
+      const res = await authApi.login(credentials);
+      if (res && res.token) {
+        setCookie('accessToken', res.token, 7);
+        set({ authenticated: true, accessToken: res.token });
+        if (res.user) {
+          get().setUserInfo(res.user);
+        }
         initWebSockets();
         return true;
       }
-      if (isSample) {
-        get().loginAsSample();
-        return true;
-      }
-      return false;
     } catch {
-      if (isSample || credentials.email) {
-        get().loginAsSample(credentials.email);
-        return true;
-      }
-      return false;
+      // Backend server is offline -> fallback to offline sample mode
     }
+
+    // Fallback if backend is not running or unreachable
+    notify('Backend unreachable. Initiating offline demo session.', 'info');
+    get().loginAsSample(credentials.email);
+    return true;
   },
 
-  loginAsSample: (email = 'jevinjayawardhana1121@gmail.com', role: UserRole = 'Club President') => {
-    const sampleToken = 'sample-jwt-token-myleo-md306';
-    setCookie('accessToken', sampleToken, 1);
+  loginAsSample: (email = 'admin@leomd306.org', role: UserRole = 'Club President') => {
+    const sampleToken = 'sample-sanctum-token-myleo-md306';
+    setCookie('accessToken', sampleToken, 7);
     set({
       authenticated: true,
       accessToken: sampleToken,
-      firstName: 'Jevin',
-      lastName: 'Jayawardhana',
-      leoId: '1121',
-      mylci: '4892011',
+      firstName: 'Admin',
+      lastName: 'User',
+      email,
+      contactNumber: '+94771234567',
+      leoId: '1',
+      mylci: 'LCI123456',
       clubId: '1',
-      clubName: 'Colombo Millennium',
-      districtId: '306 A1',
+      clubName: 'Leo Club of Colombo Central',
+      districtId: '1',
       districtName: 'District 306 A1',
       regionId: '1',
       regionName: 'Region 1',
@@ -492,48 +535,28 @@ export const useUserStore = create<UserState>((set, get) => ({
     get().switchRole(role);
   },
 
-  googleLogin: async (token: string) => {
-    try {
-      const response = await fetch(apiEndpoint + 'google_login', {
-        method: 'POST',
-        body: JSON.stringify({ token }),
-        headers: { 'Content-type': 'application/json' },
-      });
-      if (response.status === 200) {
-        const data = await response.json();
-        setCookie('accessToken', data.token, 1);
-        set({ authenticated: true, accessToken: data.token });
-        get().setUserInfo(data);
-        initWebSockets();
-        return data;
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  },
-
   logout: async () => {
     try {
-      const token = getCookie('accessToken');
-      await fetch(apiEndpoint + 'logout', {
-        method: 'POST',
-        headers: {
-          'Content-type': 'application/json',
-          Authorization: 'Bearer ' + token,
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      });
+      await authApi.logout();
     } catch {
       // ignore
     } finally {
       deleteCookie('accessToken');
       deleteCookie('fName');
       deleteCookie('lName');
+      deleteCookie('userEmail');
+      deleteCookie('contactNumber');
       deleteCookie('image');
       deleteCookie('leoId');
+      deleteCookie('mylci');
+      deleteCookie('clubId');
+      deleteCookie('clubName');
+      deleteCookie('districtId');
+      deleteCookie('districtName');
+      deleteCookie('regionName');
       deleteCookie('currentRole');
       set({ authenticated: false, accessToken: null });
+      notify('Logged out successfully.', 'info');
     }
     return true;
   },

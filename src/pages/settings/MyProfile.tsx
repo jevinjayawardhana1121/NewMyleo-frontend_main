@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useUserStore } from '@/store/userStore';
 import { getData, postData, notify } from '@/lib/api';
+import { clubsApi } from '@/lib/backendService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -96,6 +97,21 @@ export default function MyProfile() {
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+
+    const userId = user.leoId || profile.id || 1;
+    // 1. Call Laravel Backend API: PUT api/clubs/update-member/:user_id
+    await clubsApi.updateMember(userId, {
+      first_name: fname,
+      last_name: lname,
+      email,
+      contact_number: contact,
+      gender: gender === '1' || gender === 'Female' ? 'Female' : 'Male',
+      civil_status: civilStatus || 'Single',
+      birthday,
+      member_type: 'Member',
+    });
+
+    // 2. Also keep fallback call for older server route
     const fd = new FormData();
     fd.append('fname', fname);
     fd.append('lname', lname);
@@ -116,11 +132,7 @@ export default function MyProfile() {
     fd.append('ln', linkedin);
     fd.append('twitter', twitter);
 
-    if (user.id) {
-      fd.append('leo_id', String(user.id));
-    }
-
-    const res = await postData(`profile/${user.id || profile.id}/update`, fd, 'Profile updated successfully!');
+    const res = await postData(`profile/${userId}/update`, fd, 'Profile updated successfully!');
     setSaving(false);
     if (res && res.data) {
       setProfile(res.data);

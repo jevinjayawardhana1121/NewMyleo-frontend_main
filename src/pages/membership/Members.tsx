@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useUserStore } from '@/store/userStore';
 import { getData } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { clubsApi } from '@/lib/backendService';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,19 +18,48 @@ export default function Members() {
   const user = useUserStore();
 
   const [members, setMembers] = useState<any[]>([]);
+  const [officers, setOfficers] = useState<any[]>([]);
   const [duesList, setDuesList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterQuery, setFilterQuery] = useState('');
 
   useEffect(() => {
+    // 1. Attempt fetching live club roster from Laravel backend
+    const clubId = user.clubId || '1';
+    clubsApi.getById(clubId).then((res) => {
+      if (res && res.data) {
+        if (Array.isArray(res.data.membership)) {
+          const liveMembers = res.data.membership.map((m: any) => ({
+            id: m.id,
+            fName: m.first_name || m.name?.split(' ')[0] || m.name,
+            lName: m.last_name || m.name?.split(' ').slice(1).join(' ') || '',
+            email: m.email,
+            phone: m.contact_number || m.phone || '+94771234567',
+            leoId: String(m.id),
+            mylci: m.mylci || `48920${m.id}`,
+            designation: m.club_roles?.[0]?.name || 'Member',
+            club_id: String(res.data.id),
+            club_name: res.data.name,
+          }));
+          setMembers(liveMembers);
+        }
+        if (Array.isArray(res.data.officers)) {
+          setOfficers(res.data.officers);
+        }
+      }
+    });
+
+    // 2. Fetch mock/fallback data for dues and offline compatibility
     getData('members/all').then((res) => {
       setLoading(false);
       if (res && res.data) {
-        setMembers(res.data.members || res.data || []);
+        if (members.length === 0) {
+          setMembers(res.data.members || res.data || []);
+        }
         setDuesList(res.data.dues || []);
       }
     });
-  }, []);
+  }, [user.clubId]);
 
   // DATA ISOLATION ENFORCEMENT:
   // Leo Clubs cannot access or view Member records belonging to other Leo Clubs
@@ -49,7 +78,7 @@ export default function Members() {
   return (
     <AppLayout
       pageTitle="Club Membership"
-      subtitle={`Member directory and dues administration for Leo Club of ${user.clubName || 'Your Club'}`}
+      subtitle={`Member directory and dues administration for Leo Club of ${user.clubName || 'Colombo Central'}`}
       actions={
         user.canManageMembers ? (
           <Link to="/add-club-member">
@@ -79,8 +108,8 @@ export default function Members() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <Tabs
             tabs={[
-              { id: 'members', label: 'All Members', count: members.length },
-              { id: 'officers', label: 'Key Officers' },
+              { id: 'members', label: 'All Members', count: filteredMembers.length },
+              { id: 'officers', label: 'Key Officers', count: officers.length },
               { id: 'board', label: 'Executive Board' },
               { id: 'dues', label: 'Membership Dues' },
             ]}
@@ -100,101 +129,124 @@ export default function Members() {
           </div>
         </div>
 
-        {/* Members Grid */}
+        {/* Tab 1: All Members */}
         {activeTab === 'members' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            <AnimatePresence>
-              {filteredMembers.map((member, i) => (
-                <motion.div
-                  key={member.id || i}
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.25, delay: Math.min(i * 0.03, 0.3) }}
-                  whileHover={{ y: -3 }}
-                >
-                  <Card className="hover:shadow-soft-md transition-all h-full bg-white/95 hover:border-brand-300">
-                    <CardContent className="p-5 flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-100 to-brand-50 text-brand-700 font-black flex items-center justify-center text-sm shrink-0 shadow-soft-xs border border-brand-200/50">
-                        {member.image ? (
-                          <img src={member.image} alt="" className="w-full h-full object-cover rounded-2xl" />
-                        ) : (
-                          member.fName ? member.fName.charAt(0) : 'L'
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex items-center justify-between gap-1">
-                          <Link
-                            to={`/viewLeo/userID=${member.id || member.leoId}`}
-                            className="font-bold text-sm text-slate-900 hover:text-brand-600 truncate block"
-                          >
-                            {member.fName} {member.lName}
-                          </Link>
-                          {member.designation && (
-                            <Badge variant="brand" className="text-[10px] px-2 py-0.5 shrink-0 font-bold">
-                              {member.designation}
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                    <tr>
+                      <th className="py-3 px-4">Member Name</th>
+                      <th className="py-3 px-4">Role / Designation</th>
+                      <th className="py-3 px-4">Leo ID / MyLCI</th>
+                      <th className="py-3 px-4">Contact Details</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    <AnimatePresence>
+                      {filteredMembers.map((member) => (
+                        <motion.tr
+                          key={member.id}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="hover:bg-slate-50/60 transition-colors"
+                        >
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-700 font-bold flex items-center justify-center text-xs shrink-0">
+                                {member.fName ? member.fName.charAt(0) : 'L'}
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-900 block">
+                                  {member.fName} {member.lName}
+                                </span>
+                                <span className="text-[11px] text-slate-400">{member.club_name || user.clubName}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge
+                              variant={member.designation && member.designation !== 'Member' ? 'brand' : 'outline'}
+                              className="text-[10px] font-semibold"
+                            >
+                              {member.designation || 'Member'}
                             </Badge>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-400 font-mono">
-                          Leo ID: {member.leoId || 'N/A'} • MyLCI: {member.mylci || 'N/A'}
-                        </p>
-                        {member.email && (
-                          <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
-                            <Mail className="w-3 h-3 text-slate-400" /> {member.email}
-                          </p>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-slate-600">
+                            <div>ID: {member.leoId || member.id}</div>
+                            <div className="text-[11px] text-slate-400">LCI: {member.mylci || 'N/A'}</div>
+                          </td>
+                          <td className="py-3 px-4 text-slate-600">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span className="truncate">{member.email || 'N/A'}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-slate-400 mt-0.5">
+                              <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span>{member.phone || 'N/A'}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <Link to={`/leo-profile/${member.id}`}>
+                              <Button size="sm" variant="outline" className="h-7 text-xs">
+                                View Profile
+                              </Button>
+                            </Link>
+                          </td>
+                        </motion.tr>
+                      ))}
+                    </AnimatePresence>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
-        {/* Key Officers */}
+        {/* Tab 2: Key Officers */}
         {activeTab === 'officers' && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {['President', 'Secretary', 'Treasurer'].map((role) => {
-              const officer = members.find((m) => (m.designation || '').toLowerCase().includes(role.toLowerCase()));
-              return (
-                <Card key={role} className="p-6 text-center space-y-3">
-                  <span className="text-xs font-bold text-brand-600 uppercase tracking-wider">{role}</span>
-                  <div className="w-16 h-16 rounded-full bg-slate-100 mx-auto flex items-center justify-center text-xl font-bold text-slate-700">
-                    {officer?.fName ? officer.fName.charAt(0) : '🦁'}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(officers.length > 0 ? officers : filteredMembers.filter((m) => m.designation && m.designation !== 'Member')).map((officer: any) => (
+              <Card key={officer.id} className="p-5 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 font-bold flex items-center justify-center text-sm shadow-sm">
+                    🦁
                   </div>
-                  <h3 className="font-bold text-base text-slate-900">
-                    {officer ? `${officer.fName} ${officer.lName}` : `Vacant / Not Assigned`}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-mono">MyLCI: {officer?.mylci || 'N/A'}</p>
-                </Card>
-              );
-            })}
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm">{officer.name || `${officer.fName} ${officer.lName}`}</h3>
+                    <Badge variant="brand" className="text-[10px] mt-0.5">
+                      {officer.club_roles?.[0]?.name || officer.designation || 'Club Officer'}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="text-xs text-slate-500 pt-2 border-t border-slate-100 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="truncate">{officer.email || 'N/A'}</span>
+                </div>
+              </Card>
+            ))}
           </div>
         )}
 
-        {/* Dues */}
+        {/* Tab 3: Dues & Administration */}
         {activeTab === 'dues' && (
           <Card>
             <CardContent className="p-6">
-              <div className="divide-y divide-slate-100 text-xs">
-                {members.map((m, i) => (
-                  <div key={i} className="py-3 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 mb-2">Membership Dues Collection</h3>
+              <p className="text-xs text-slate-500 mb-4">
+                Club dues status synchronized with District Treasury and Club Wallet accounting records.
+              </p>
+              <div className="space-y-3">
+                {duesList.map((d: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 text-xs">
                     <div>
-                      <p className="font-bold text-slate-800">{m.fName} {m.lName}</p>
-                      <p className="text-[11px] text-slate-400">Leo ID: {m.leoId}</p>
+                      <span className="font-bold text-slate-800">{d.name}</span>
+                      <span className="text-slate-400 ml-2">({d.period})</span>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-semibold text-slate-700">
-                        Paid: {formatCurrency(m.dues_paid ?? 0)} LKR
-                      </span>
-                      {m.dues_cleared ? (
-                        <Badge variant="success">Cleared</Badge>
-                      ) : (
-                        <Badge variant="warning">Pending</Badge>
-                      )}
-                    </div>
+                    <Badge variant={d.status === 'Paid' ? 'brand' : 'outline'}>{d.status}</Badge>
                   </div>
                 ))}
               </div>
@@ -205,4 +257,3 @@ export default function Members() {
     </AppLayout>
   );
 }
-

@@ -26,7 +26,13 @@ export default function Login() {
   const handleFillSample = () => {
     setEmail('jevinjayawardhana1121@gmail.com');
     setPassword('Jevin@2001');
-    notify('Sample credentials autofilled!', 'info');
+    notify('Sample user credentials autofilled!', 'info');
+  };
+
+  const handleFillAdminSample = () => {
+    setEmail('admin@leomd306.org');
+    setPassword('password123');
+    notify('Backend API sample credentials autofilled!', 'info');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -169,13 +175,22 @@ export default function Login() {
                     <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                     1-Click Direct Role Testing
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleFillSample}
-                    className="text-[11px] font-bold text-brand-600 hover:underline flex items-center gap-1"
-                  >
-                    <KeyRound className="w-3 h-3" /> Fill Credentials
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleFillAdminSample}
+                      className="text-[11px] font-bold text-amber-700 hover:underline flex items-center gap-1"
+                    >
+                      <KeyRound className="w-3 h-3" /> Backend Admin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleFillSample}
+                      className="text-[11px] font-bold text-brand-600 hover:underline flex items-center gap-1"
+                    >
+                      <KeyRound className="w-3 h-3" /> Jevin Demo
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
