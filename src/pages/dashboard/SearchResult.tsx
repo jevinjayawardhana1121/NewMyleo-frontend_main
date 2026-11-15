@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 export default function SearchResult() {
   const { keyword } = useParams<{ keyword: string }>();
+  const cleanKeyword = (keyword || '').replace(/^keyword=/, '');
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -24,10 +25,10 @@ export default function SearchResult() {
 
   useEffect(() => {
     const runSearch = async () => {
-      if (!keyword) return;
+      if (!cleanKeyword) return;
       setLoading(true);
       const start = Date.now();
-      const res = await getData(`search/${keyword}`);
+      const res = await getData(`search/${cleanKeyword}`);
       const end = Date.now();
       setDuration(((end - start) / 1000).toFixed(2));
 
@@ -78,7 +79,7 @@ export default function SearchResult() {
 
   return (
     <AppLayout
-      pageTitle={`Search: "${keyword || ''}"`}
+      pageTitle={`Search: "${cleanKeyword || ''}"`}
       subtitle={
         loading
           ? 'Searching across directory...'
@@ -97,7 +98,7 @@ export default function SearchResult() {
             <Search className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <h3 className="text-lg font-bold text-slate-700">No Matching Results</h3>
             <p className="text-sm text-slate-500 max-w-sm mx-auto mt-1">
-              We couldn't find any Leos, clubs, or projects matching &quot;{keyword}&quot;. Try a different spelling or keyword.
+              We couldn't find any Leos, clubs, or projects matching &quot;{cleanKeyword}&quot;. Try a different spelling or keyword.
             </p>
           </Card>
         ) : (

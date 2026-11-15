@@ -485,8 +485,134 @@ export const useUserStore = create<UserState>((set, get) => ({
         });
         break;
 
+      case 'Club Vice President':
+        set({
+          currentRole: 'Club Vice President',
+          clubLevel: 2,
+          canUpdateClubProfile: false,
+          canManageActivityReports: false,
+          canManageMembers: false,
+          canManageClubOfficers: false,
+          canManageProjectReports: false,
+          canManageClubEvents: true,
+          canCreateClubMeeting: false,
+          canManageWallet: false,
+          canAppointClubOfficers: false,
+          canAppointDistrictOfficers: false,
+          canAppointMultipleOfficers: false,
+          canCreateClub: false,
+          canCreateDistrict: false,
+          isRegionChairperson: false,
+          isZoneHead: false,
+          isDp: false,
+          isDistrictOfficer: false,
+          canApproveReports: false,
+          canViewClubProjects: true,
+          canViewClubActivityReports: true,
+          canForwardReportsToMultiple: false,
+          canViewClubWallet: false,
+          isMdp: false,
+          isMultipleOfficer: false,
+          canViewForwardedReports: false,
+        });
+        break;
+
+      case 'Leo Advisor':
+        set({
+          currentRole: 'Leo Advisor',
+          clubLevel: 5,
+          canUpdateClubProfile: false,
+          canManageActivityReports: false,
+          canManageMembers: false,
+          canManageClubOfficers: false,
+          canManageProjectReports: false,
+          canManageClubEvents: false,
+          canCreateClubMeeting: false,
+          canManageWallet: false,
+          canAppointClubOfficers: false,
+          canAppointDistrictOfficers: false,
+          canAppointMultipleOfficers: false,
+          canCreateClub: false,
+          canCreateDistrict: false,
+          isRegionChairperson: false,
+          isZoneHead: false,
+          isDp: false,
+          isDistrictOfficer: false,
+          canApproveReports: false,
+          canViewClubProjects: true,
+          canViewClubActivityReports: true,
+          canForwardReportsToMultiple: false,
+          canViewClubWallet: false,
+          isMdp: false,
+          isMultipleOfficer: false,
+          canViewForwardedReports: false,
+        });
+        break;
+
+      case 'Zone Head':
+        set({
+          currentRole: 'Zone Head',
+          clubLevel: 11,
+          canUpdateClubProfile: false,
+          canManageActivityReports: false,
+          canManageMembers: false,
+          canManageClubOfficers: false,
+          canManageProjectReports: false,
+          canManageWallet: false,
+          canAppointClubOfficers: false,
+          canAppointDistrictOfficers: false,
+          canAppointMultipleOfficers: false,
+          canCreateClub: false,
+          canCreateDistrict: false,
+          isRegionChairperson: false,
+          isZoneHead: true,
+          isDp: false,
+          isDistrictOfficer: true,
+          canApproveReports: false,
+          canViewClubProjects: true,
+          canViewClubActivityReports: true,
+          canViewClubWallet: false,
+          canForwardReportsToMultiple: false,
+          isMdp: false,
+          isMultipleOfficer: false,
+          canViewForwardedReports: false,
+        });
+        break;
+
+      case 'Member':
+        set({
+          currentRole: 'Member',
+          clubLevel: 9,
+          canUpdateClubProfile: false,
+          canManageActivityReports: false,
+          canManageMembers: false,
+          canManageClubOfficers: false,
+          canManageProjectReports: false,
+          canManageClubEvents: false,
+          canCreateClubMeeting: false,
+          canManageWallet: false,
+          canAppointClubOfficers: false,
+          canAppointDistrictOfficers: false,
+          canAppointMultipleOfficers: false,
+          canCreateClub: false,
+          canCreateDistrict: false,
+          isRegionChairperson: false,
+          isZoneHead: false,
+          isDp: false,
+          isDistrictOfficer: false,
+          canApproveReports: false,
+          canViewClubProjects: true,
+          canViewClubActivityReports: false,
+          canForwardReportsToMultiple: false,
+          canViewClubWallet: false,
+          isMdp: false,
+          isMultipleOfficer: false,
+          canViewForwardedReports: false,
+        });
+        break;
+
       default:
-        set({ currentRole: role, clubLevel: 1, canManageWallet: true });
+        set({ currentRole: role, clubLevel: 1, canManageWallet: false });
         break;
     }
   },

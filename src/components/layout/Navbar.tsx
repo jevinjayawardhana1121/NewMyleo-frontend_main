@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '@/store/appStore';
 import { useUserStore, UserRole } from '@/store/userStore';
 import { notify, subscribeBackendHealth, checkBackendHealth, BackendHealth } from '@/lib/api';
@@ -7,7 +7,9 @@ import {
   Menu,
   Search,
   ChevronDown,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw,
+  User as UserIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +29,7 @@ export function Navbar({ pageTitle, subtitle, actions }: NavbarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [health, setHealth] = useState<BackendHealth>({ connected: false, checkedAt: 0 });
+  const [checkingHealth, setCheckingHealth] = useState(false);
 
   useEffect(() => {
     checkBackendHealth();
@@ -34,10 +37,21 @@ export function Navbar({ pageTitle, subtitle, actions }: NavbarProps) {
     return unsub;
   }, []);
 
+  const handleRefreshHealth = async () => {
+    setCheckingHealth(true);
+    const res = await checkBackendHealth();
+    setCheckingHealth(false);
+    if (res.connected) {
+      notify('Connected to Laravel Sanctum Backend (http://localhost:8000)!', 'success');
+    } else {
+      notify('Backend server offline. Running in Standalone / Demo Mode.', 'info');
+    }
+  };
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      navigate(`/search/keyword=${encodeURIComponent(searchQuery.trim())}`);
+      navigate(`/search/${encodeURIComponent(searchQuery.trim())}`);
     }
   };
 
@@ -55,12 +69,19 @@ export function Navbar({ pageTitle, subtitle, actions }: NavbarProps) {
         return '🦁';
       case 'Region Chairperson':
         return '🗺️';
+      case 'Zone Head':
+        return '📍';
       case 'Club President':
         return '👑';
+      case 'Club Vice President':
+        return '🤝';
       case 'Club Secretary':
         return '📝';
       case 'Club Treasurer':
         return '💰';
+      case 'Leo Advisor':
+        return '🎓';
+      case 'Member':
       default:
         return '👤';
     }
@@ -70,28 +91,49 @@ export function Navbar({ pageTitle, subtitle, actions }: NavbarProps) {
     {
       role: 'Club President',
       title: 'Club President',
-      desc: 'Full administrative authority (Projects, Activity Reports, Members, Wallet). Can appoint VP, Secretary, Treasurer, Leo Advisor.',
+      desc: 'Full administrative authority (Projects, Activity Reports, Members, Wallet). Can appoint Club VP, Secretary, Treasurer, and Leo Advisor.',
       icon: '👑',
+      tier: 'Club Tier',
+    },
+    {
+      role: 'Club Vice President',
+      title: 'Club Vice President',
+      desc: 'Assists President in club operations. Can view club projects, activity reports, and member directory.',
+      icon: '🤝',
       tier: 'Club Tier',
     },
     {
       role: 'Club Secretary',
       title: 'Club Secretary',
-      desc: 'Manages Projects, Activity Reports, and Member records. Can appoint VP, Treasurer, Leo Advisor. (Wallet is restricted).',
+      desc: 'Manages Projects, Activity Reports, and Member records. Can appoint Club VP, Treasurer, and Leo Advisor. (Wallet is restricted).',
       icon: '📝',
       tier: 'Club Tier',
     },
     {
       role: 'Club Treasurer',
       title: 'Club Treasurer',
-      desc: 'Manages Projects and Club Wallet finances. (Member records and officer appointments are restricted).',
+      desc: 'Manages Project budgets and Club Wallet finances. (Member records and officer appointments are restricted).',
       icon: '💰',
       tier: 'Club Tier',
     },
     {
+      role: 'Leo Advisor',
+      title: 'Leo Advisor (Lions Club)',
+      desc: 'Provides adult sponsor guidance. Reviews club activity reports and projects as required for consultation proof.',
+      icon: '🎓',
+      tier: 'Club Advisory',
+    },
+    {
+      role: 'Zone Head',
+      title: 'Zone Head',
+      desc: 'Oversees clubs within designated zone under the guidance of Region Chairperson and District Cabinet.',
+      icon: '📍',
+      tier: 'Zone Tier',
+    },
+    {
       role: 'Region Chairperson',
       title: 'Region Chairperson (RC)',
-      desc: 'Oversees clubs within assigned region. Reviews, approves, or returns reports (approved reports forward to DP).',
+      desc: 'Oversees clubs in assigned region. Reviews, approves, or returns reports (approved reports forward to DP).',
       icon: '🗺️',
       tier: 'Regional Tier (Optional)',
     },
@@ -109,27 +151,35 @@ export function Navbar({ pageTitle, subtitle, actions }: NavbarProps) {
       icon: '🌐',
       tier: 'Multiple District Tier',
     },
+    {
+      role: 'Member',
+      title: 'Leo Member',
+      desc: 'General club member. Can view club projects, participate in activities, and view own profile.',
+      icon: '👤',
+      tier: 'General Membership',
+    },
   ];
 
   return (
-    <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/70 px-5 sm:px-8 py-3.5 transition-all shadow-soft-xs">
-      <div className="flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/70 px-4 sm:px-8 py-3 transition-all shadow-soft-xs">
+      <div className="flex items-center justify-between gap-3 sm:gap-4">
         {/* Left: Mobile Toggle & Page Header */}
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setMobileMenuOpen(true)}
-            className="lg:hidden text-slate-600 rounded-xl"
+            aria-label="Open navigation menu"
+            className="lg:hidden text-slate-600 rounded-xl shrink-0"
           >
             <Menu className="w-5 h-5" />
           </Button>
 
           <div className="min-w-0">
             {pageTitle && (
-              <h2 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 truncate">
+              <h1 className="text-base sm:text-lg lg:text-xl font-black tracking-tight text-slate-900 truncate">
                 {pageTitle}
-              </h2>
+              </h1>
             )}
             {subtitle && (
               <p className="text-xs text-slate-500 truncate hidden sm:block font-medium">
@@ -140,9 +190,9 @@ export function Navbar({ pageTitle, subtitle, actions }: NavbarProps) {
         </div>
 
         {/* Middle: Global Spotlight Search */}
-        <div className="hidden md:flex items-center flex-1 max-w-md mx-4">
+        <div className="hidden md:flex items-center flex-1 max-w-md mx-2 sm:mx-4">
           <form onSubmit={handleSearch} className="w-full relative group">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors pointer-events-none" />
             <input
               type="text"
               placeholder="Search projects, members, records..."
@@ -158,48 +208,70 @@ export function Navbar({ pageTitle, subtitle, actions }: NavbarProps) {
           </form>
         </div>
 
-        {/* Right: Actions, Role Selector & User pill */}
-        <div className="flex items-center gap-2.5">
+        {/* Right: Actions, Health Status, Role Selector & User Profile */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           {actions}
 
-          {/* Backend Connection Status Badge */}
-          {health.connected ? (
-            <div
-              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold shadow-soft-xs"
-              title="Connected to Laravel Backend API (http://localhost:8000)"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              API Connected
-            </div>
-          ) : (
-            <div
-              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-500 text-[10px] font-bold shadow-soft-xs"
-              title="Backend offline (port 8000). Running in Standalone / Demo mode"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              Demo Mode
-            </div>
-          )}
+          {/* Backend Connection Status Badge (Click to Re-probe) */}
+          <button
+            type="button"
+            onClick={handleRefreshHealth}
+            title={
+              health.connected
+                ? 'Laravel Sanctum Backend Online (http://localhost:8000). Click to re-check.'
+                : 'Backend server offline (port 8000). Running in Standalone / Demo mode. Click to re-check.'
+            }
+            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold shadow-soft-xs transition-all hover:scale-105 active:scale-95 ${
+              health.connected
+                ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                : 'bg-slate-50 border border-slate-200 text-slate-600'
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                health.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'
+              }`}
+            />
+            <span>{health.connected ? 'API Connected' : 'Demo Mode'}</span>
+            <RefreshCw
+              className={`w-2.5 h-2.5 ml-0.5 opacity-60 ${
+                checkingHealth ? 'animate-spin text-brand-600' : ''
+              }`}
+            />
+          </button>
 
           {/* Interactive Role Switcher Pill */}
           <button
             type="button"
             onClick={() => setRoleModalOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 shadow-soft-xs hover:border-brand-300 hover:shadow-soft-sm transition-all duration-200 group text-left"
+            aria-label="Switch Governance Role"
+            className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 shadow-soft-xs hover:border-brand-300 hover:shadow-soft-sm transition-all duration-200 group text-left"
           >
             <div className="w-6 h-6 rounded-lg bg-brand-50 border border-brand-100 flex items-center justify-center text-xs shrink-0 group-hover:scale-105 transition-transform">
               {getRoleIcon(user.currentRole)}
             </div>
-            <div className="hidden xl:block min-w-0">
-              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block leading-tight">
+            <div className="hidden sm:block min-w-0 max-w-[140px] lg:max-w-[180px]">
+              <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block leading-tight">
                 Role View
               </span>
               <span className="text-xs font-bold text-slate-800 block truncate leading-tight">
                 {user.currentRole || 'Club President'}
               </span>
             </div>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-colors shrink-0" />
           </button>
+
+          {/* Direct Profile Shortcut Avatar */}
+          <Link
+            to="/profile-settings"
+            aria-label="View My Profile"
+            title={`${user.firstName} ${user.lastName} (My Profile)`}
+            className="flex items-center gap-2 p-0.5 rounded-xl hover:ring-2 hover:ring-brand-400/30 transition-all shrink-0"
+          >
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-amber-500 text-white font-black flex items-center justify-center text-xs shadow-soft-xs">
+              {user.firstName ? user.firstName.charAt(0) : <UserIcon className="w-4 h-4" />}
+            </div>
+          </Link>
         </div>
       </div>
 
@@ -239,14 +311,14 @@ export function Navbar({ pageTitle, subtitle, actions }: NavbarProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-slate-900 text-sm">{item.title}</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
                         {item.tier}
                       </span>
                     </div>
                     {isCurrent && (
-                      <Badge variant="brand" className="gap-1 text-[11px] font-bold">
+                      <Badge variant="brand" className="gap-1 text-[11px] font-bold shrink-0">
                         <CheckCircle2 className="w-3 h-3" /> Active
                       </Badge>
                     )}
